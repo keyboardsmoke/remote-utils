@@ -103,6 +103,11 @@ impl Process
 
 impl Process
 {
+    pub fn handle(&self) -> &Handle
+    {
+        &self.handle
+    }
+
     pub fn local() -> anyhow::Result<Process, anyhow::Error>
     {
         Ok(Process { handle: impls::get_local_process_handle()? })
