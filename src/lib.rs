@@ -26,7 +26,7 @@ impl Pointer
 
 pub struct Handle
 {
-    handle: u64
+    pub handle: u64
 }
 
 impl Handle
@@ -90,7 +90,7 @@ pub struct Library
 
 pub struct Process
 {
-    handle: Handle
+    pub handle: Handle
 }
 
 impl Process
