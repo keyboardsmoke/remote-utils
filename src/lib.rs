@@ -1,8 +1,96 @@
 mod impls;
 
+#[derive(Clone, Copy)]
+pub struct Pointer
+{
+    value: *mut std::ffi::c_void
+}
+
+impl Pointer
+{
+    pub fn from<T>(ptr: *mut T) -> Pointer
+    {
+        Pointer { value: unsafe { std::mem::transmute::<*mut T, *mut std::ffi::c_void>(ptr) } }
+    }
+
+    pub fn u64(&self) -> u64
+    {
+        self.value as u64
+    }
+
+    pub fn cast_mut<T>(&self) -> *mut T
+    {
+        self.value as *mut T
+    }
+}
+
+pub struct Handle
+{
+    handle: u64
+}
+
+impl Handle
+{
+    pub fn generic(&self) -> u64 {
+        self.handle
+    }
+
+    pub fn cast<T>(&self) -> *const T {
+        self.handle as *const T
+    }
+
+    pub fn cast_mut<T>(&mut self) -> *mut T {
+        self.handle as *mut T
+    }
+
+    pub fn is_ok(&self) -> bool {
+        !self.is_invalid() && !self.is_null()
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn is_invalid(&self) -> bool {
+        self.handle == winapi::um::handleapi::INVALID_HANDLE_VALUE as u64
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn is_invalid(&self) -> bool {
+        std::fs::metadata(std::path::Path::new(format!("/proc/{}", self.handle).as_str())).is_err()
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.handle == 0
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for Handle
+{
+    fn drop(&mut self)
+    {
+        let res = impls::drop_handle(self.handle as *mut std::ffi::c_void);
+        if !res {
+            println!("Warning: Failed to deallocate handle at 0x{:X}", self.handle);
+        } else {
+            self.handle = 0;
+        }
+    }
+}
+
+pub struct Library
+{
+    // The containing process
+    pub parent_handle: Handle,
+
+    // Name read upon discovery in a lookup function
+    pub cached_name: Option<String>,
+
+    // Address of the module
+    pub address: u64
+}
+
 pub struct Process
 {
-    handle: impls::Handle
+    handle: Handle
 }
 
 impl Process
@@ -30,12 +118,12 @@ impl Process
         Ok(Process { handle: impls::handle_from_name(name)? })
     }
 
-    pub fn allocate(&self, size: usize) -> anyhow::Result<impls::Pointer, anyhow::Error>
+    pub fn allocate(&self, size: usize) -> anyhow::Result<Pointer, anyhow::Error>
     {
         impls::allocate(&self.handle, size)
     }
 
-    pub fn deallocate(&self, ptr: impls::Pointer) -> anyhow::Result<(), anyhow::Error>
+    pub fn deallocate(&self, ptr: Pointer) -> anyhow::Result<(), anyhow::Error>
     {
         impls::deallocate(&self.handle, ptr)
     }
@@ -50,7 +138,14 @@ impl Process
         impls::write(&self.handle, address, data)
     }
 
-    pub fn get_shared_library(&self, library_name: &str) -> anyhow::Result<impls::Library, anyhow::Error>
+    pub fn commit_memory(&self, data: &Vec<u8>) -> anyhow::Result<Pointer, anyhow::Error>
+    {
+        let alloc = impls::allocate(&self.handle, data.len())?;
+        impls::write(&self.handle, alloc.u64(), data)?;
+        Ok(alloc)
+    }
+
+    pub fn get_shared_library(&self, library_name: &str) -> anyhow::Result<Library, anyhow::Error>
     {
         impls::get_shared_library(&self.handle, library_name)
     }

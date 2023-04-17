@@ -13,7 +13,6 @@ anyhow = { version = "1.0.70", features = ["backtrace"] }
 winapi = { version = "0.3.8", features = ["winbase", "errhandlingapi", "minwindef", "handleapi", "memoryapi", "processthreadsapi", "psapi", "synchapi", "tlhelp32", "winuser"] }
 
 [target.'cfg(unix)'.dependencies]
-linux-raw-sys = { version = "0.3.1" }
-syscalls = { version = "0.6" }
+syscalls = { version = "0.6.9" }
 rustix = { version = "0.37.11", features = ["mm"]}
 proc-maps = { version = "0.3.0" }
