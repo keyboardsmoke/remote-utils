@@ -95,9 +95,9 @@ pub struct Process
 
 impl Process
 {
-    pub fn get_pid(&self) -> u32
+    pub fn get_pid(&self) -> anyhow::Result<u32, anyhow::Error>
     {
-        0
+        impls::get_pid(&self.handle)
     }
 }
 
@@ -148,6 +148,16 @@ impl Process
         let alloc = impls::allocate(&self.handle, data.len())?;
         impls::write(&self.handle, alloc.u64(), data)?;
         Ok(alloc)
+    }
+
+    pub fn execute(&self, ptr: Pointer) -> anyhow::Result<(), anyhow::Error>
+    {
+        impls::execute(&self.handle, ptr.u64())
+    }
+
+    pub fn execute_async(&self, ptr: Pointer) -> anyhow::Result<(), anyhow::Error>
+    {
+        impls::execute_async(&self.handle, ptr.u64())
     }
 
     pub fn get_shared_library(&self, library_name: &str) -> anyhow::Result<Library, anyhow::Error>

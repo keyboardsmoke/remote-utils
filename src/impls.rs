@@ -17,7 +17,7 @@ pub fn handle_from_pid(pid: u32) -> anyhow::Result<Handle, anyhow::Error>
 {
     let res = unsafe { winapi::um::processthreadsapi::OpenProcess(winapi::um::winnt::PROCESS_ALL_ACCESS, winapi::shared::minwindef::FALSE, pid) };
     if res == winapi::um::handleapi::INVALID_HANDLE_VALUE {
-        anyhow::bail!("OpenProcess failed (Code: 0x{:X}", unsafe { winapi::um::errhandlingapi::GetLastError() })
+        anyhow::bail!("OpenProcess failed (Code: 0x{:X})", unsafe { winapi::um::errhandlingapi::GetLastError() })
     }
     Ok(Handle { handle: res as u64 })
 }
@@ -83,11 +83,46 @@ pub fn get_local_process_handle() -> anyhow::Result<Handle, anyhow::Error>
 }
 
 #[cfg(target_os = "windows")]
+pub fn execute(handle: &Handle, address: u64) -> anyhow::Result<(), anyhow::Error>
+{
+    let start_address = unsafe { std::mem::transmute::<u64, unsafe extern "system" fn (winapi::shared::minwindef::LPVOID) -> winapi::shared::minwindef::DWORD>(address) };
+    let handle = unsafe { winapi::um::processthreadsapi::CreateRemoteThread(handle.cast::<u8>() as *mut winapi::ctypes::c_void, std::ptr::null_mut::<winapi::um::minwinbase::SECURITY_ATTRIBUTES>(), 0, Some(start_address), std::ptr::null_mut(), 0, std::ptr::null_mut()) };
+    if handle.is_null() {
+        anyhow::bail!("CreateRemoteThread failed. (Code: 0x{:X})", unsafe { winapi::um::errhandlingapi::GetLastError() });
+    }
+    unsafe { winapi::um::synchapi::WaitForSingleObject(handle, winapi::um::winbase::INFINITE) };
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn execute(handle: &Handle, address: u64) -> anyhow::Result<(), anyhow::Error>
+{
+    anyhow::bail!("Unimplemented.")
+}
+
+#[cfg(target_os = "windows")]
+pub fn execute_async(handle: &Handle, address: u64) -> anyhow::Result<(), anyhow::Error>
+{
+    let start_address = unsafe { std::mem::transmute::<u64, unsafe extern "system" fn (winapi::shared::minwindef::LPVOID) -> winapi::shared::minwindef::DWORD>(address) };
+    let handle = unsafe { winapi::um::processthreadsapi::CreateRemoteThread(handle.cast::<u8>() as *mut winapi::ctypes::c_void, std::ptr::null_mut::<winapi::um::minwinbase::SECURITY_ATTRIBUTES>(), 0, Some(start_address), std::ptr::null_mut(), 0, std::ptr::null_mut()) };
+    if handle.is_null() {
+        anyhow::bail!("CreateRemoteThread failed. (Code: 0x{:X})", unsafe { winapi::um::errhandlingapi::GetLastError() });
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn execute_async(handle: &Handle, address: u64) -> anyhow::Result<(), anyhow::Error>
+{
+    anyhow::bail!("Unimplemented.")
+}
+
+#[cfg(target_os = "windows")]
 pub fn allocate(handle: &Handle, size: usize) -> anyhow::Result<Pointer, anyhow::Error>
 {
     let res = unsafe { winapi::um::memoryapi::VirtualAllocEx(handle.generic() as *mut winapi::ctypes::c_void, std::ptr::null_mut(), size, winapi::um::winnt::MEM_COMMIT, winapi::um::winnt::PAGE_EXECUTE_READWRITE) } as *mut std::ffi::c_void;
     if res.is_null() {
-        anyhow::bail!("VirtualAllocEx failed (Code: 0x{:X}", unsafe { winapi::um::errhandlingapi::GetLastError() })
+        anyhow::bail!("VirtualAllocEx failed (Code: 0x{:X})", unsafe { winapi::um::errhandlingapi::GetLastError() })
     }
     Ok(Pointer { value: res })
 }
@@ -103,7 +138,7 @@ pub fn deallocate(handle: &Handle, ptr: Pointer) -> anyhow::Result<(), anyhow::E
 {
     let res = unsafe { winapi::um::memoryapi::VirtualFreeEx(handle.generic() as *mut winapi::ctypes::c_void, ptr.cast_mut(), 0, winapi::um::winnt::MEM_RELEASE) };
     if res == winapi::shared::minwindef::FALSE {
-        anyhow::bail!("VirtualFreeEx failed (Code: 0x{:X}", unsafe { winapi::um::errhandlingapi::GetLastError() })
+        anyhow::bail!("VirtualFreeEx failed (Code: 0x{:X})", unsafe { winapi::um::errhandlingapi::GetLastError() })
     }
     Ok(())
 }
@@ -145,7 +180,7 @@ pub fn read(handle: &Handle, address: u64, size: usize) -> anyhow::Result<Vec<u8
     let remote = iovec { iov_base: address as *mut linux_raw_sys::ctypes::c_void, iov_len: size as u64 };
     let res = unsafe { syscall6(syscalls::Sysno::process_vm_readv, handle.generic() as usize, std::ptr::addr_of!(local) as usize, 1, std::ptr::addr_of!(remote) as usize, 1, 0) };
     if res != size {
-        anyhow::bail!("Failed to read memory. 0x{:X}", res)
+        anyhow::bail!("Failed to read memory. (Return: 0x{:X})", res)
     }
     Ok(vec)
 }
@@ -176,7 +211,7 @@ pub fn write(handle: &Handle, address: u64, data: &Vec<u8>) -> anyhow::Result<()
     let remote = iovec { iov_base: address as *mut linux_raw_sys::ctypes::c_void, iov_len: data.len() as u64 };
     let res = unsafe { syscall6(syscalls::Sysno::process_vm_writev, handle.generic() as usize, std::ptr::addr_of!(local) as usize, 1, std::ptr::addr_of!(remote) as usize, 1, 0) };
     if res != data.len() {
-        anyhow::bail!("Failed to write memory. 0x{:X}", res)
+        anyhow::bail!("Failed to write memory. (Return: 0x{:X})", res)
     }
     Ok(())
 }
@@ -230,4 +265,18 @@ pub fn get_shared_library(handle: &Handle, library_name: &str) -> anyhow::Result
         }
     }
     anyhow::bail!("Failed to find library.")
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_pid(handle: &Handle) -> anyhow::Result<u32, anyhow::Error>
+{
+    let h = handle.generic() as *mut winapi::ctypes::c_void;
+    let id = unsafe { winapi::um::processthreadsapi::GetProcessId(h) };
+    Ok(id)
+}
+
+#[cfg(target_os = "linux")]
+pub fn get_pid(handle: &Handle) -> anyhow::Result<u32, anyhow::Error>
+{
+    Ok(handle.generic() as u32)
 }
