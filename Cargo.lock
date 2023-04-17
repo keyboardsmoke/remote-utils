@@ -457,6 +457,7 @@ name = "remote-utils"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "linux-raw-sys",
  "proc-maps",
  "rustix",
  "syscalls",
