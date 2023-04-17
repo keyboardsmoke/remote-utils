@@ -101,7 +101,7 @@ pub fn allocate(handle: &Handle, size: usize) -> anyhow::Result<Pointer, anyhow:
 #[cfg(target_os = "windows")]
 pub fn deallocate(handle: &Handle, ptr: Pointer) -> anyhow::Result<(), anyhow::Error>
 {
-    let res = unsafe { winapi::um::memoryapi::VirtualFreeEx(handle.generic() as *mut winapi::ctypes::c_void, ptr.cast_mut(), 0, winapi::um::winnt::MEM_FREE) };
+    let res = unsafe { winapi::um::memoryapi::VirtualFreeEx(handle.generic() as *mut winapi::ctypes::c_void, ptr.cast_mut(), 0, winapi::um::winnt::MEM_RELEASE) };
     if res == winapi::shared::minwindef::FALSE {
         anyhow::bail!("VirtualFreeEx failed (Code: 0x{:X}", unsafe { winapi::um::errhandlingapi::GetLastError() })
     }
